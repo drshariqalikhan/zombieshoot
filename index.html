@@ -3,19 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>PWA Body Segmentation</title>
+    <title>PWA Body Segmentation vDEBUG</title> {/* Added vDEBUG to title for cache busting check */}
 
     <!-- PWA Manifest -->
     <link rel="manifest" href="manifest.json">
 
     <!-- iOS PWA Meta Tags & Standard PWA Meta Tag -->
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="mobile-web-app-capable" content="yes"> {/* Added for broader compatibility */}
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="BodySegment">
     <link rel="apple-touch-icon" href="icons/icon-192x192.png">
-    {/* <link rel="icon" href="favicon.ico" type="image/x-icon"> Optional: if you add a favicon.ico */}
-
+    {/* <link rel="icon" href="favicon.ico" type="image/x-icon"> Optional */}
 
     <style>
         :root {
@@ -52,7 +51,7 @@
             align-items: center;
             justify-content: flex-start;
             min-height: 100vh;
-            padding-top: env(safe-area-inset-top, 0px); /* For notch */
+            padding-top: env(safe-area-inset-top, 0px);
             padding-bottom: env(safe-area-inset-bottom, 0px);
             box-sizing: border-box;
         }
@@ -73,13 +72,13 @@
         .container {
             position: relative;
             width: 90vw;
-            max-width: 400px; /* Max width for larger screens */
-            aspect-ratio: 3 / 4; /* Common phone camera aspect ratio (portrait) */
+            max-width: 400px;
+            aspect-ratio: 3 / 4;
             margin-bottom: 20px;
         }
 
         #video {
-            display: none; /* Hidden, we draw to canvas */
+            display: none;
         }
 
         #outputCanvas {
@@ -89,7 +88,7 @@
             width: 100%;
             height: 100%;
             border: 2px solid var(--canvas-border-color);
-            background-color: #000; /* Black background until video loads */
+            background-color: #000;
             border-radius: 8px;
         }
 
@@ -119,7 +118,7 @@
             overflow-y: auto;
             color: var(--log-text-color);
             padding: 5px;
-            background-color: var(--bg-color); /* Slightly different for contrast within log */
+            background-color: var(--bg-color);
             border-radius: 4px;
         }
 
@@ -136,7 +135,7 @@
     </style>
 </head>
 <body>
-    <h1>PWA Body Segmentation</h1>
+    <h1>PWA Body Segmentation vDEBUG</h1> {/* Changed title for cache busting check */}
     <p id="status">Initializing...</p>
 
     <div class="container">
@@ -164,13 +163,12 @@
         const statusElement = document.getElementById('status');
 
         let segmenter;
-        let rafId; // requestAnimationFrame ID
+        let rafId;
 
-        // ***** CORRECTED segmentationConfig *****
         const segmentationConfig = {
-            runtime: 'mediapipe', // Explicitly set the runtime
-            solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation', // Provide path for mediapipe
-            modelType: 'general' // or 'landscape'
+            runtime: 'mediapipe',
+            solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation',
+            modelType: 'general'
         };
 
         function logEvent(message, type = 'info') {
@@ -180,7 +178,10 @@
             logEntry.textContent = `[${timestamp}] ${message}`;
             logOutputElement.appendChild(logEntry);
             logOutputElement.scrollTop = logOutputElement.scrollHeight;
-            console[type === 'error' ? 'error' : (type === 'success' ? 'info' : type)](message); // Use console.info for success
+            // For console:
+            if (type === 'error') console.error(`[${timestamp}] ${message}`);
+            else if (type === 'success') console.info(`[${timestamp}] ${message}`); // Use info for success
+            else console.log(`[${timestamp}] ${message}`);
         }
 
         async function setupCamera() {
@@ -209,7 +210,7 @@
                         canvasElement.width = videoElement.videoWidth;
                         canvasElement.height = videoElement.videoHeight;
                         logEvent(`Camera resolution: ${videoElement.videoWidth}x${videoElement.videoHeight}`, 'success');
-                        videoElement.play().catch(e => logEvent(`Video play failed: ${e}`, 'error'));
+                        videoElement.play().catch(e => logEvent(`Video play failed: ${e.name} - ${e.message}`, 'error'));
                         resolve(videoElement);
                     };
                 });
@@ -218,7 +219,7 @@
                 statusElement.textContent = 'Failed to access camera. Check permissions.';
                 if (err.name === "NotAllowedError") {
                     alert("Camera access was denied. Please enable it in your browser/OS settings and refresh.");
-                } else if (err.name === "NotFoundError") {
+                } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
                     alert("No camera found. Ensure a camera is connected and enabled.");
                 }
                 throw err;
@@ -229,29 +230,46 @@
             logEvent('Loading Body Segmentation model...');
             statusElement.textContent = 'Loading model...';
             try {
+                // ***** ADDED DEBUGGING LOGS HERE *****
+                if (typeof segmentationConfig === 'undefined') {
+                    logEvent('CRITICAL DEBUG: segmentationConfig IS UNDEFINED before createSegmenter!', 'error');
+                } else if (segmentationConfig === null) {
+                    logEvent('CRITICAL DEBUG: segmentationConfig IS NULL before createSegmenter!', 'error');
+                } else {
+                    logEvent(`DEBUG: segmentationConfig.runtime = ${segmentationConfig.runtime}`, 'info');
+                    logEvent(`DEBUG: segmentationConfig type = ${typeof segmentationConfig}`, 'info');
+                    logEvent(`DEBUG: segmentationConfig content = ${JSON.stringify(segmentationConfig)}`, 'info');
+                }
+                // Check if runtime property exists and is valid
+                if (!segmentationConfig || !segmentationConfig.runtime || (segmentationConfig.runtime !== 'tfjs' && segmentationConfig.runtime !== 'mediapipe')) {
+                     logEvent(`CRITICAL ERROR: segmentationConfig.runtime is invalid or missing. Value: ${segmentationConfig ? segmentationConfig.runtime : 'N/A'}`, 'error');
+                     throw new Error(`segmentationConfig.runtime is invalid or missing. Value: ${segmentationConfig ? segmentationConfig.runtime : 'N/A'}`);
+                }
+
+
                 segmenter = await bodySegmentation.createSegmenter(
                     bodySegmentation.SupportedModels.MediaPipeSelfieSegmentation,
-                    segmentationConfig // Pass the corrected config
+                    segmentationConfig
                 );
                 logEvent('Body Segmentation model loaded successfully.', 'success');
                 statusElement.textContent = 'Model loaded. Ready!';
             } catch (err) {
-                logEvent(`Error loading model: ${err.message}`, 'error');
+                logEvent(`Error loading model: ${err.message}. Stack: ${err.stack}`, 'error');
                 statusElement.textContent = 'Failed to load model.';
-                throw err;
+                throw err; // Rethrow to be caught by main's catch block
             }
         }
 
         async function segmentFrame() {
-            if (!segmenter || videoElement.paused || videoElement.ended || videoElement.readyState < 4) {
+            if (!segmenter || videoElement.paused || videoElement.ended || videoElement.readyState < 4) { // HTMLMediaElement.HAVE_ENOUGH_DATA is 4
                 if (rafId) cancelAnimationFrame(rafId);
-                rafId = requestAnimationFrame(segmentFrame); // Keep trying if video not ready
+                rafId = requestAnimationFrame(segmentFrame);
                 return;
             }
 
             try {
                 const people = await segmenter.segmentPeople(videoElement, {
-                    flipHorizontal: false, // Set to true if using front camera and want mirrored output
+                    flipHorizontal: false,
                     multiSegmentation: false,
                     segmentBodyParts: false,
                 });
@@ -273,32 +291,32 @@
                     const maskData = personMask.data;
 
                     for (let i = 0; i < maskData.length; i++) {
-                        if (maskData[i] < 0.5) { // Threshold for segmentation transparency
-                            data[i * 4 + 3] = 0; // Alpha to 0
+                        if (maskData[i] < 0.5) {
+                            data[i * 4 + 3] = 0;
                         }
                     }
                     tempCtx.putImageData(imageData, 0, 0);
                     canvasCtx.drawImage(tempCanvas, 0, 0, canvasElement.width, canvasElement.height);
-
                 }
             } catch (err) {
                 logEvent(`Error during segmentation: ${err.message}`, 'error');
             }
-
             rafId = requestAnimationFrame(segmentFrame);
         }
-
 
         async function main() {
             logEvent('Application started.');
             try {
+                await tf.setBackend('webgl'); // Explicitly set backend
+                logEvent(`TF.js backend set to: ${tf.getBackend()}`, 'success');
                 await loadModel();
                 await setupCamera();
                 logEvent('Starting segmentation loop...', 'success');
-                statusElement.textContent = 'Starting camera...'; // Update status
+                statusElement.textContent = 'Starting camera...';
                 segmentFrame();
             } catch (error) {
-                logEvent(`Initialization failed: ${error.message}`, 'error');
+                // The error from loadModel or setupCamera will be caught here
+                logEvent(`Initialization failed: ${error.message}. Stack: ${error.stack}`, 'error');
                 statusElement.textContent = 'Initialization failed. See logs.';
             }
         }
@@ -308,6 +326,22 @@
                 navigator.serviceWorker.register('service-worker.js')
                     .then(registration => {
                         logEvent('ServiceWorker registration successful: ' + registration.scope, 'success');
+                        registration.onupdatefound = () => {
+                            const installingWorker = registration.installing;
+                            if (installingWorker) {
+                                installingWorker.onstatechange = () => {
+                                    if (installingWorker.state === 'installed') {
+                                        if (navigator.serviceWorker.controller) {
+                                            // New update available
+                                            logEvent('New content is available; please refresh.', 'info');
+                                        } else {
+                                            // Content is cached for offline use
+                                            logEvent('Content is cached for offline use.', 'success');
+                                        }
+                                    }
+                                };
+                            }
+                        };
                     })
                     .catch(error => {
                         logEvent('ServiceWorker registration failed: ' + error, 'error');
@@ -318,7 +352,6 @@
         }
 
         main();
-
     </script>
 </body>
 </html>
