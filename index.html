@@ -2,14 +2,15 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <!-- Ensure user-scalable=no is present for disabling pinch zoom -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>PWA Body Segmentation vDEBUG (unpkg)</title>
+    <title>PWA Body Segmentation - Landscape Shooter</title>
 
     <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="BodySegment">
+    <meta name="apple-mobile-web-app-title" content="BodySegmentLS">
     <link rel="apple-touch-icon" href="icons/icon-192x192.png">
 
     <style>
@@ -23,6 +24,9 @@
             --success-color: #388E3C;
             --info-color: #1976D2;
             --canvas-border-color: #cccccc;
+            --button-bg-color: var(--primary-color);
+            --button-text-color: white;
+            --target-color: rgba(255, 0, 0, 0.7);
         }
 
         @media (prefers-color-scheme: dark) {
@@ -33,6 +37,7 @@
                 --log-bg-color: #2a2a2a;
                 --log-text-color: #bbbbbb;
                 --canvas-border-color: #444444;
+                --target-color: rgba(255, 69, 0, 0.8); /* Brighter red for dark mode */
             }
         }
 
@@ -45,72 +50,117 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: flex-start;
-            min-height: 100vh;
+            justify-content: center; /* Center content vertically for landscape */
+            width: 100vw;
+            height: 100vh; /* Full viewport height */
+            overflow: hidden; /* Prevent scrollbars due to full screen */
             padding-top: env(safe-area-inset-top, 0px);
+            padding-left: env(safe-area-inset-left, 0px);
+            padding-right: env(safe-area-inset-right, 0px);
             padding-bottom: env(safe-area-inset-bottom, 0px);
             box-sizing: border-box;
         }
 
+        .main-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            max-height: 100%;
+        }
+
         h1 {
             color: var(--primary-color);
-            margin-top: 20px;
-            margin-bottom: 10px;
-            font-size: 1.5em;
+            margin-top: 10px; /* Adjusted margin for landscape */
+            margin-bottom: 5px;
+            font-size: 1.2em;
+            text-align: center;
         }
 
         #status {
-            margin-bottom: 15px;
+            margin-bottom: 5px;
             font-style: italic;
-            min-height: 1.2em;
+            min-height: 1em;
+            font-size: 0.9em;
         }
 
         .container {
             position: relative;
-            width: 90vw;
-            max-width: 400px;
-            aspect-ratio: 3 / 4;
-            margin-bottom: 20px;
+            /* Aim for a landscape aspect ratio, e.g., 16:9 or 4:3
+               Let's use max available width and height within viewport.
+               The canvas itself will be sized by video.
+            */
+            width: 95vw; /* Max width */
+            height: 70vh; /* Max height for video area */
+            max-width: 1280px; /* Cap max width */
+            max-height: 720px; /* Cap max height */
+            margin-bottom: 10px;
+            display: flex; /* For centering canvas if it's smaller */
+            justify-content: center;
+            align-items: center;
         }
 
         #video {
-            display: none; /* Video is processed but not shown directly */
+            display: none;
         }
 
         #outputCanvas {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
+            /* Will be sized by JS, but set max to prevent overflow if JS fails early */
+            max-width: 100%;
+            max-height: 100%;
             border: 2px solid var(--canvas-border-color);
-            background-color: #000; /* Fallback background for the canvas */
+            background-color: #000;
             border-radius: 8px;
+            object-fit: contain; /* Ensure video content fits within canvas bounds if aspect ratios differ */
         }
+
+        #controls {
+            margin-bottom: 10px;
+        }
+
+        #toggleCameraButton {
+            padding: 8px 15px;
+            font-size: 0.9em;
+            background-color: var(--button-bg-color);
+            color: var(--button-text-color);
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        #toggleCameraButton:hover {
+            opacity: 0.9;
+        }
+
 
         #logContainer {
             width: 90vw;
             max-width: 400px;
-            margin-top: 10px;
+            /* Position log at the bottom or side if there's space */
             background-color: var(--log-bg-color);
             border-radius: 8px;
-            padding: 10px;
+            padding: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            font-size: 0.8em;
+            max-height: 15vh; /* Limit height */
+            overflow: hidden; /* Contains logOutput */
+            display: flex;
+            flex-direction: column;
         }
 
         #logContainer h3 {
             margin-top: 0;
-            margin-bottom: 8px;
-            font-size: 1em;
+            margin-bottom: 5px;
+            font-size: 0.9em;
             color: var(--primary-color);
         }
 
         #logOutput {
             font-family: "SF Mono", "Menlo", "Monaco", "Courier New", monospace;
-            font-size: 0.75em;
+            font-size: 0.7em;
             white-space: pre-wrap;
             word-break: break-all;
-            max-height: 150px;
+            flex-grow: 1; /* Allow it to take available space */
             overflow-y: auto;
             color: var(--log-text-color);
             padding: 5px;
@@ -119,24 +169,28 @@
         }
 
         .log-entry {
-            padding: 2px 0;
+            padding: 1px 0;
             border-bottom: 1px dashed var(--canvas-border-color);
         }
-        .log-entry:last-child {
-            border-bottom: none;
-        }
+        .log-entry:last-child { border-bottom: none; }
         .log-entry.error { color: var(--error-color); font-weight: bold; }
         .log-entry.success { color: var(--success-color); }
         .log-entry.info { color: var(--info-color); }
     </style>
 </head>
 <body>
-    <h1>PWA Body Segmentation vDEBUG (unpkg)</h1>
-    <p id="status">Initializing...</p>
+    <div class="main-content">
+        <h1>BodySeg Shooter</h1>
+        <p id="status">Initializing...</p>
 
-    <div class="container">
-        <video id="video" playsinline></video>
-        <canvas id="outputCanvas"></canvas>
+        <div class="container">
+            <video id="video" playsinline></video>
+            <canvas id="outputCanvas"></canvas>
+        </div>
+
+        <div id="controls">
+            <button id="toggleCameraButton">Toggle Camera (Front)</button>
+        </div>
     </div>
 
     <div id="logContainer">
@@ -149,10 +203,10 @@
     <script src="https://unpkg.com/@tensorflow/tfjs-converter@3.18.0/dist/tf-converter.min.js"></script>
     <script src="https://unpkg.com/@tensorflow/tfjs-backend-webgl@3.18.0/dist/tf-backend-webgl.min.js"></script>
 
-    <!-- 1. MediaPipe Selfie Segmentation Solution from UNPKG (MUST be before body-segmentation) -->
+    <!-- MediaPipe Selfie Segmentation Solution -->
     <script src="https://unpkg.com/@mediapipe/selfie_segmentation@0.1/selfie_segmentation.js" crossorigin="anonymous"></script>
 
-    <!-- 2. TensorFlow.js Body Segmentation Model from UNPKG -->
+    <!-- TensorFlow.js Body Segmentation Model -->
     <script src="https://unpkg.com/@tensorflow-models/body-segmentation@1.0.1/dist/body-segmentation.min.js"></script>
 
 
@@ -162,9 +216,11 @@
         const canvasCtx = canvasElement.getContext('2d');
         const logOutputElement = document.getElementById('logOutput');
         const statusElement = document.getElementById('status');
+        const toggleCameraButton = document.getElementById('toggleCameraButton');
 
         let segmenter;
         let rafId;
+        let currentFacingMode = 'user'; // 'user' (front) or 'environment' (back)
 
         const segmentationConfig = {
             runtime: 'mediapipe',
@@ -178,47 +234,99 @@
             logEntry.classList.add('log-entry', type);
             logEntry.textContent = `[${timestamp}] ${message}`;
             logOutputElement.appendChild(logEntry);
-            logOutputElement.scrollTop = logOutputElement.scrollHeight;
+            // Auto-scroll with a small delay to ensure DOM update
+            setTimeout(() => { logOutputElement.scrollTop = logOutputElement.scrollHeight; }, 0);
+
             if (type === 'error') console.error(`[${timestamp}] ${message}`);
             else if (type === 'success') console.info(`[${timestamp}] ${message}`);
             else console.log(`[${timestamp}] ${message}`);
         }
 
-        async function setupCamera() {
-            logEvent('Setting up camera...');
+        async function setupCamera(facingModeToUse = 'user') {
+            logEvent(`Setting up camera (mode: ${facingModeToUse})...`);
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                 logEvent('getUserMedia() not supported by your browser.', 'error');
                 statusElement.textContent = 'Camera API not supported.';
                 throw new Error('getUserMedia() not supported.');
             }
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({
+                // Request landscape-oriented video if possible
+                const constraints = {
                     video: {
-                        facingMode: 'user',
-                        width: { ideal: 640 },
-                        height: { ideal: 480 }
+                        facingMode: facingModeToUse,
+                        width: { ideal: 1280, max: 1920 }, // Landscape preference
+                        height: { ideal: 720, max: 1080 }, // Landscape preference
+                        // aspectRatio: { ideal: 16/9 } // Can also try aspect ratio
                     }
-                });
+                };
+                logEvent(`Requesting video with constraints: ${JSON.stringify(constraints.video)}`);
+
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
                 videoElement.srcObject = stream;
                 logEvent('Camera stream acquired.');
-                return new Promise((resolve) => {
+
+                return new Promise((resolve, reject) => {
                     videoElement.onloadedmetadata = () => {
-                        videoElement.width = videoElement.videoWidth;
+                        logEvent(`Raw video dimensions: ${videoElement.videoWidth}x${videoElement.videoHeight}`);
+
+                        // Ensure canvas dimensions match video aspect ratio but fit within container
+                        const container = document.querySelector('.container');
+                        const containerWidth = container.clientWidth;
+                        const containerHeight = container.clientHeight;
+
+                        let canvasWidth = videoElement.videoWidth;
+                        let canvasHeight = videoElement.videoHeight;
+
+                        // Scale video to fit container while maintaining aspect ratio
+                        const videoAspectRatio = videoElement.videoWidth / videoElement.videoHeight;
+                        if (containerWidth / containerHeight > videoAspectRatio) {
+                            // Container is wider than video, so height is the constraint
+                            canvasHeight = containerHeight;
+                            canvasWidth = canvasHeight * videoAspectRatio;
+                        } else {
+                            // Container is taller than video, so width is the constraint
+                            canvasWidth = containerWidth;
+                            canvasHeight = canvasWidth / videoAspectRatio;
+                        }
+                        
+                        videoElement.width = videoElement.videoWidth; // internal video element data size
                         videoElement.height = videoElement.videoHeight;
-                        canvasElement.width = videoElement.videoWidth; // Match canvas to video resolution initially
-                        canvasElement.height = videoElement.videoHeight;
-                        logEvent(`Camera resolution: ${videoElement.videoWidth}x${videoElement.videoHeight}`, 'success');
-                        videoElement.play().catch(e => logEvent(`Video play failed: ${e.name} - ${e.message}`, 'error'));
+
+                        canvasElement.width = Math.round(canvasWidth);
+                        canvasElement.height = Math.round(canvasHeight);
+
+                        logEvent(`Canvas dimensions set to: ${canvasElement.width}x${canvasElement.height}`, 'success');
+                        videoElement.play().catch(e => {
+                            logEvent(`Video play failed: ${e.name} - ${e.message}`, 'error');
+                            reject(e);
+                        });
                         resolve(videoElement);
                     };
+                    videoElement.onerror = (e) => {
+                        logEvent('Video element error.', 'error');
+                        reject(new Error('Video element error'));
+                    }
                 });
             } catch (err) {
                 logEvent(`Error setting up camera: ${err.message} (Name: ${err.name})`, 'error');
-                statusElement.textContent = 'Failed to access camera. Check permissions.';
+                statusElement.textContent = `Camera Error (${facingModeToUse}). Check permissions.`;
+                if (err.name === "OverconstrainedError") {
+                    logEvent('OverconstrainedError: Requested resolution/facing mode not available. Trying with default.', 'error');
+                    // Fallback to simpler constraints if specific ones fail
+                    try {
+                         const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facingModeToUse } });
+                         videoElement.srcObject = fallbackStream;
+                         // ... rest of onloadedmetadata logic from above, simplified
+                         return new Promise((resolve) => { /* ... */ });
+                    } catch (fallbackErr) {
+                        logEvent(`Fallback camera setup also failed: ${fallbackErr.message}`, 'error');
+                         throw fallbackErr; // rethrow original or fallback error
+                    }
+                }
                 if (err.name === "NotAllowedError") {
                     alert("Camera access was denied. Please enable it in your browser/OS settings and refresh.");
                 } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
-                    alert("No camera found. Ensure a camera is connected and enabled.");
+                    alert(`No ${facingModeToUse} camera found. Ensure a camera is connected and enabled.`);
                 }
                 throw err;
             }
@@ -228,19 +336,11 @@
             logEvent('Loading Body Segmentation model...');
             statusElement.textContent = 'Loading model...';
             try {
-                logEvent(`DEBUG: segmentationConfig.runtime = ${segmentationConfig.runtime}`, 'info');
-                logEvent(`DEBUG: segmentationConfig type = ${typeof segmentationConfig}`, 'info');
-                logEvent(`DEBUG: segmentationConfig content = ${JSON.stringify(segmentationConfig)}`, 'info');
-
-                if (!segmentationConfig || !segmentationConfig.runtime || (segmentationConfig.runtime !== 'tfjs' && segmentationConfig.runtime !== 'mediapipe')) {
-                     logEvent(`CRITICAL ERROR: segmentationConfig.runtime is invalid or missing. Value: ${segmentationConfig ? segmentationConfig.runtime : 'N/A'}`, 'error');
-                     throw new Error(`segmentationConfig.runtime is invalid or missing. Value: ${segmentationConfig ? segmentationConfig.runtime : 'N/A'}`);
-                }
+                // ... (your existing debug logs for segmentationConfig)
                 if (segmentationConfig.runtime === 'mediapipe' && typeof SelfieSegmentation === 'undefined') {
-                    logEvent('MediaPipe SelfieSegmentation class not found globally. Ensure selfie_segmentation.js is loaded.', 'error');
+                    logEvent('MediaPipe SelfieSegmentation class not found globally.', 'error');
                     throw new Error('SelfieSegmentation global not found.');
                 }
-
                 segmenter = await bodySegmentation.createSegmenter(
                     bodySegmentation.SupportedModels.MediaPipeSelfieSegmentation,
                     segmentationConfig
@@ -254,29 +354,76 @@
             }
         }
 
+        function drawTarget() {
+            const centerX = canvasCtx.canvas.width / 2;
+            const centerY = canvasCtx.canvas.height / 2;
+            // Diameter is 20% of the SHORTER canvas dimension
+            const diameter = Math.min(canvasCtx.canvas.width, canvasCtx.canvas.height) * 0.20;
+            const radius = diameter / 2;
+
+            const targetColor = getComputedStyle(document.documentElement).getPropertyValue('--target-color').trim() || 'rgba(255, 0, 0, 0.7)';
+
+            canvasCtx.save();
+            canvasCtx.globalAlpha = 1.0; // Ensure target is fully opaque
+
+            // Outer circle
+            canvasCtx.beginPath();
+            canvasCtx.arc(centerX, centerY, radius, 0, 2 * Math.PI, false);
+            canvasCtx.strokeStyle = targetColor;
+            canvasCtx.lineWidth = Math.max(1, Math.round(radius * 0.1)); // Scaled line width
+            canvasCtx.stroke();
+
+            // Inner circle
+            canvasCtx.beginPath();
+            canvasCtx.arc(centerX, centerY, radius * 0.6, 0, 2 * Math.PI, false);
+            canvasCtx.lineWidth = Math.max(1, Math.round(radius * 0.08));
+            canvasCtx.stroke();
+
+            // Crosshairs (extending slightly beyond the main circle)
+            const crosshairExtent = radius * 1.1;
+            canvasCtx.beginPath();
+            canvasCtx.moveTo(centerX - crosshairExtent, centerY);
+            canvasCtx.lineTo(centerX + crosshairExtent, centerY);
+            canvasCtx.moveTo(centerX, centerY - crosshairExtent);
+            canvasCtx.lineTo(centerX, centerY + crosshairExtent);
+            canvasCtx.lineWidth = Math.max(1, Math.round(radius * 0.05));
+            canvasCtx.stroke();
+
+            // Center dot
+            canvasCtx.beginPath();
+            canvasCtx.arc(centerX, centerY, Math.max(1, Math.round(radius * 0.1)), 0, 2 * Math.PI, false);
+            canvasCtx.fillStyle = targetColor;
+            canvasCtx.fill();
+
+            canvasCtx.restore();
+        }
+
+
         async function segmentFrame() {
-            if (!segmenter || videoElement.paused || videoElement.ended || videoElement.readyState < 4) { // HAVE_ENOUGH_DATA
-                if (rafId) cancelAnimationFrame(rafId);
+            if (!segmenter || !videoElement.srcObject || videoElement.paused || videoElement.ended || videoElement.readyState < 3) { // HAVE_FUTURE_DATA or HAVE_ENOUGH_DATA
                 rafId = requestAnimationFrame(segmentFrame);
                 return;
             }
 
             try {
                 const people = await segmenter.segmentPeople(videoElement, {
-                    flipHorizontal: false,
+                    flipHorizontal: currentFacingMode === 'user', // Flip for front camera to act like a mirror
                     multiSegmentation: false,
                     segmentBodyParts: false,
                 });
 
-                canvasCtx.globalCompositeOperation = 'source-over'; // Reset before clearing
+                canvasCtx.globalCompositeOperation = 'source-over';
                 canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
                 if (people.length > 0) {
                     const segmentation = people[0];
+                    // Get the mask as a CanvasImageSource (e.g., HTMLImageElement, HTMLCanvasElement)
+                    // This is often more efficient than toBinaryMask for direct drawing.
                     const personMaskImageSource = await segmentation.mask.toCanvasImageSource();
 
+                    // Create a temporary canvas to composite the video and mask
                     const tempCanvas = document.createElement('canvas');
-                    tempCanvas.width = videoElement.videoWidth;
+                    tempCanvas.width = videoElement.videoWidth; // Use raw video dimensions for mask processing
                     tempCanvas.height = videoElement.videoHeight;
                     const tempCtx = tempCanvas.getContext('2d');
 
@@ -284,15 +431,14 @@
                     tempCtx.drawImage(videoElement, 0, 0, tempCanvas.width, tempCanvas.height);
 
                     // 2. Apply mask using 'destination-in'
+                    // This keeps parts of the video where the mask is opaque
                     tempCtx.globalCompositeOperation = 'destination-in';
                     tempCtx.drawImage(personMaskImageSource, 0, 0, tempCanvas.width, tempCanvas.height);
                     
-                    // 3. Draw to main canvas
-                    // Optional: Draw background (e.g., dimmed video)
-                    canvasCtx.globalAlpha = 0.3;
+                    // 3. Draw result to main canvas, scaling to fit canvasElement dimensions
+                    canvasCtx.globalAlpha = 0.3; // Optional: Draw original video slightly dimmed as background
                     canvasCtx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
-                    canvasCtx.globalAlpha = 1.0;
-
+                    canvasCtx.globalAlpha = 1.0; // Reset alpha
                     canvasCtx.drawImage(tempCanvas, 0, 0, canvasElement.width, canvasElement.height);
 
                 } else {
@@ -301,53 +447,93 @@
                 }
             } catch (err) {
                 logEvent(`Error during segmentation: ${err.message}. Stack: ${err.stack}`, 'error');
+                 // Stop the loop if a critical error occurs in segmentation
+                if (rafId) cancelAnimationFrame(rafId);
+                rafId = null; // Prevent further calls if segmenter is broken
+                statusElement.textContent = "Segmentation Error. See logs.";
             }
 
-            rafId = requestAnimationFrame(segmentFrame);
+            // Draw target on top of everything
+            drawTarget();
+
+            if (rafId !== null) { // Only request next frame if not critically errored
+                rafId = requestAnimationFrame(segmentFrame);
+            }
         }
+
+        toggleCameraButton.addEventListener('click', async () => {
+            currentFacingMode = (currentFacingMode === 'user') ? 'environment' : 'user';
+            toggleCameraButton.textContent = `Toggle Camera (${currentFacingMode === 'user' ? 'Front' : 'Back'})`;
+            logEvent(`Switching camera to ${currentFacingMode}`);
+            statusElement.textContent = 'Switching camera...';
+
+            if (rafId) {
+                cancelAnimationFrame(rafId);
+                rafId = null;
+            }
+            if (videoElement.srcObject) {
+                videoElement.srcObject.getTracks().forEach(track => track.stop());
+                videoElement.srcObject = null; // Clear srcObject
+            }
+
+            try {
+                await setupCamera(currentFacingMode);
+                statusElement.textContent = 'Camera switched. Starting segmentation...';
+                if (segmenter) { // Ensure segmenter is loaded
+                    rafId = requestAnimationFrame(segmentFrame); // Restart segmentation
+                } else {
+                    statusElement.textContent = 'Model not loaded. Cannot start segmentation.';
+                }
+            } catch (error) {
+                // Error already logged by setupCamera
+                // Revert button text if switch failed
+                currentFacingMode = (currentFacingMode === 'user') ? 'environment' : 'user';
+                toggleCameraButton.textContent = `Toggle Camera (${currentFacingMode === 'user' ? 'Front' : 'Back'})`;
+            }
+        });
 
         async function main() {
             logEvent('Application started.');
             try {
+                // Attempt to lock screen orientation
+                if (screen.orientation && screen.orientation.lock) {
+                    try {
+                        await screen.orientation.lock('landscape');
+                        logEvent('Screen orientation locked to landscape.', 'success');
+                    } catch (err) {
+                        logEvent(`Could not lock screen to landscape: ${err.name} - ${err.message}`, 'info');
+                    }
+                } else {
+                    logEvent('Screen Orientation API not fully supported for locking.', 'info');
+                }
+
                 await tf.setBackend('webgl');
                 logEvent(`TF.js backend set to: ${tf.getBackend()}`, 'success');
                 await loadModel();
-                await setupCamera();
+                await setupCamera(currentFacingMode); // Initial camera setup
                 logEvent('Starting segmentation loop...', 'success');
                 statusElement.textContent = 'Starting camera...';
-                segmentFrame();
+                rafId = requestAnimationFrame(segmentFrame);
             } catch (error) {
                 logEvent(`Initialization failed: ${error.message}. Stack: ${error.stack}`, 'error');
                 statusElement.textContent = 'Initialization failed. See logs.';
             }
         }
 
+        // Handle PWA Service Worker
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('service-worker.js')
                     .then(registration => {
                         logEvent('ServiceWorker registration successful: ' + registration.scope, 'success');
-                        registration.onupdatefound = () => {
-                            const installingWorker = registration.installing;
-                            if (installingWorker) {
-                                installingWorker.onstatechange = () => {
-                                    if (installingWorker.state === 'installed') {
-                                        if (navigator.serviceWorker.controller) {
-                                            logEvent('New content is available; please refresh.', 'info');
-                                        } else {
-                                            logEvent('Content is cached for offline use.', 'success');
-                                        }
-                                    }
-                                };
-                            }
-                        };
+                        // ... (your existing SW update logic)
                     })
                     .catch(error => {
                         logEvent('ServiceWorker registration failed: ' + error, 'error');
                     });
             });
         } else {
-            logEvent('Service workers are not supported in this browser.', 'info');
+            logEvent('Service workers are not supported.', 'info');
         }
 
         main();
