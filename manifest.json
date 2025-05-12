@@ -10,23 +10,17 @@
       "purpose": "any maskable"
     },
     {
-      "src": "icons/icon-384x384.png",  // Optional: good to have a mid-range size
-      "sizes": "384x384",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
       "src": "icons/icon-512x512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
     }
   ],
-  "start_url": "/zombieshoot/",
-  "display": "standalone",
+  "start_url": "/zombieshoot/", // Crucial for GitHub Pages subdirectory
+  "display": "standalone",     // CRUCIAL
   "background_color": "#1e1e1e",
   "theme_color": "#5c8df6",
-  "scope": "/zombieshoot/",
+  "scope": "/zombieshoot/",      // Must encompass start_url
   "orientation": "landscape",
-  "id": "/zombieshoot/"
+  "id": "/zombieshoot/"        // Good for unique ID
 }
