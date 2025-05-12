@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>PWA Body Segmentation</title>
+
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.json">
+
+    <!-- iOS PWA Meta Tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="BodySegment">
+    <link rel="apple-touch-icon" href="icons/icon-192x192.png">
+    <!-- Add more apple-touch-icon sizes if needed -->
+
+    <style>
+        :root {
+            --bg-color: #f0f0f0;
+            --text-color: #333333;
+            --primary-color: #3367D6;
+            --log-bg-color: #e9e9e9;
+            --log-text-color: #555555;
+            --error-color: #D32F2F;
+            --success-color: #388E3C;
+            --info-color: #1976D2;
+            --canvas-border-color: #cccccc;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-color: #1e1e1e;
+                --text-color: #e0e0e0;
+                --primary-color: #5c8df6;
+                --log-bg-color: #2a2a2a;
+                --log-text-color: #bbbbbb;
+                --canvas-border-color: #444444;
+            }
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            min-height: 100vh;
+            padding-top: env(safe-area-inset-top, 0px); /* For notch */
+            padding-bottom: env(safe-area-inset-bottom, 0px);
+            box-sizing: border-box;
+        }
+
+        h1 {
+            color: var(--primary-color);
+            margin-top: 20px;
+            margin-bottom: 10px;
+            font-size: 1.5em;
+        }
+
+        #status {
+            margin-bottom: 15px;
+            font-style: italic;
+            min-height: 1.2em;
+        }
+
+        .container {
+            position: relative;
+            width: 90vw;
+            max-width: 400px; /* Max width for larger screens */
+            aspect-ratio: 3 / 4; /* Common phone camera aspect ratio (portrait) */
+            margin-bottom: 20px;
+        }
+
+        #video {
+            display: none; /* Hidden, we draw to canvas */
+        }
+
+        #outputCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: 2px solid var(--canvas-border-color);
+            background-color: #000; /* Black background until video loads */
+            border-radius: 8px;
+        }
+
+        #logContainer {
+            width: 90vw;
+            max-width: 400px;
+            margin-top: 10px;
+            background-color: var(--log-bg-color);
+            border-radius: 8px;
+            padding: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        #logContainer h3 {
+            margin-top: 0;
+            margin-bottom: 8px;
+            font-size: 1em;
+            color: var(--primary-color);
+        }
+
+        #logOutput {
+            font-family: "SF Mono", "Menlo", "Monaco", "Courier New", monospace;
+            font-size: 0.75em;
+            white-space: pre-wrap;
+            word-break: break-all;
+            max-height: 150px;
+            overflow-y: auto;
+            color: var(--log-text-color);
+            padding: 5px;
+            background-color: var(--bg-color); /* Slightly different for contrast within log */
+            border-radius: 4px;
+        }
+
+        .log-entry {
+            padding: 2px 0;
+            border-bottom: 1px dashed var(--canvas-border-color);
+        }
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+        .log-entry.error { color: var(--error-color); font-weight: bold; }
+        .log-entry.success { color: var(--success-color); }
+        .log-entry.info { color: var(--info-color); }
+    </style>
+</head>
+<body>
+    <h1>PWA Body Segmentation</h1>
+    <p id="status">Initializing...</p>
+
+    <div class="container">
+        <video id="video" playsinline></video>
+        <canvas id="outputCanvas"></canvas>
+    </div>
+
+    <div id="logContainer">
+        <h3>Event Log:</h3>
+        <pre id="logOutput"></pre>
+    </div>
+
+    <!-- TensorFlow.js and Body-Segmentation model -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@3.18.0/dist/tf-core.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter@3.18.0/dist/tf-converter.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@3.18.0/dist/tf-backend-webgl.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-segmentation@1.0.1/dist/body-segmentation.min.js"></script>
+
+
+    <script>
+        const videoElement = document.getElementById('video');
+        const canvasElement = document.getElementById('outputCanvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const logOutputElement = document.getElementById('logOutput');
+        const statusElement = document.getElementById('status');
+
+        let segmenter;
+        let rafId; // requestAnimationFrame ID
+
+        const segmentationConfig = {
+            // runtime: 'mediapipe', // or 'tfjs'
+            // solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation', // Required for mediapipe runtime
+            modelType: 'general' // 'general' or 'landscape'
+        };
+
+        function logEvent(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.classList.add('log-entry', type);
+            logEntry.textContent = `[${timestamp}] ${message}`;
+            logOutputElement.appendChild(logEntry);
+            // Scroll to bottom
+            logOutputElement.scrollTop = logOutputElement.scrollHeight;
+            console[type === 'error' ? 'error' : 'log'](message);
+        }
+
+        async function setupCamera() {
+            logEvent('Setting up camera...');
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                logEvent('getUserMedia() not supported by your browser.', 'error');
+                statusElement.textContent = 'Camera API not supported.';
+                throw new Error('getUserMedia() not supported.');
+            }
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: 'user', // 'user' for front, 'environment' for back
+                        width: { ideal: 640 }, // Request a reasonable size
+                        height: { ideal: 480 }
+                    }
+                });
+                videoElement.srcObject = stream;
+                logEvent('Camera stream acquired.');
+
+                return new Promise((resolve) => {
+                    videoElement.onloadedmetadata = () => {
+                        videoElement.width = videoElement.videoWidth;
+                        videoElement.height = videoElement.videoHeight;
+                        canvasElement.width = videoElement.videoWidth;
+                        canvasElement.height = videoElement.videoHeight;
+                        logEvent(`Camera resolution: ${videoElement.videoWidth}x${videoElement.videoHeight}`, 'success');
+                        videoElement.play();
+                        resolve(videoElement);
+                    };
+                });
+            } catch (err) {
+                logEvent(`Error setting up camera: ${err.message} (Name: ${err.name})`, 'error');
+                statusElement.textContent = 'Failed to access camera. Check permissions.';
+                if (err.name === "NotAllowedError") {
+                    alert("Camera access was denied. Please enable it in your browser settings.");
+                } else if (err.name === "NotFoundError") {
+                    alert("No camera found. Ensure a camera is connected and enabled.");
+                }
+                throw err;
+            }
+        }
+
+        async function loadModel() {
+            logEvent('Loading Body Segmentation model...');
+            statusElement.textContent = 'Loading model...';
+            try {
+                // Using MediaPipeSelfieSegmentation model
+                segmenter = await bodySegmentation.createSegmenter(
+                    bodySegmentation.SupportedModels.MediaPipeSelfieSegmentation,
+                    segmentationConfig
+                );
+                logEvent('Body Segmentation model loaded successfully.', 'success');
+                statusElement.textContent = 'Model loaded. Ready!';
+            } catch (err) {
+                logEvent(`Error loading model: ${err.message}`, 'error');
+                statusElement.textContent = 'Failed to load model.';
+                throw err;
+            }
+        }
+
+        async function segmentFrame() {
+            if (!segmenter || videoElement.paused || videoElement.ended) {
+                if (rafId) cancelAnimationFrame(rafId);
+                return;
+            }
+
+            try {
+                const people = await segmenter.segmentPeople(videoElement, {
+                    flipHorizontal: false, // depends on camera type; true for user-facing generally
+                    multiSegmentation: false,
+                    segmentBodyParts: false, // we only need the general human mask
+                });
+
+                canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+                // Draw original video frame as background
+                canvasCtx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
+
+                if (people.length > 0) {
+                    // For simplicity, just taking the first person detected
+                    const personMask = people[0].mask; // This is an ImageData object
+
+                    // This visualization technique creates a "cutout" of the person
+                    // by making non-person pixels transparent.
+                    // Alternative: use bodySegmentation.toBinaryMask or toColoredMask
+                    // and then draw that mask or use it to composite.
+
+                    // Create a temporary canvas to work with the mask
+                    const tempCanvas = document.createElement('canvas');
+                    tempCanvas.width = personMask.width;
+                    tempCanvas.height = personMask.height;
+                    const tempCtx = tempCanvas.getContext('2d');
+
+                    // Draw the video frame onto the temporary canvas
+                    tempCtx.drawImage(videoElement, 0, 0, personMask.width, personMask.height);
+                    const imageData = tempCtx.getImageData(0, 0, personMask.width, personMask.height);
+                    const data = imageData.data;
+                    const maskData = personMask.data; // This is the segmentation mask data
+
+                    for (let i = 0; i < maskData.length; i++) {
+                        // The mask data (from personMask.data) is a value from 0 (background) to 1 (person).
+                        // We'll make pixels transparent if they are not part of the person.
+                        // The maskData is an array of floats, scaled 0-1.
+                        // We check if the mask value is low (closer to 0), then set alpha to 0.
+                        if (maskData[i] < 0.5) { // Threshold for segmentation
+                            data[i * 4 + 3] = 0; // Set alpha to 0 (transparent)
+                        }
+                        // else, the original pixel (with original alpha) is kept
+                    }
+
+                    // Put the modified image data (with transparent background) back to temp canvas
+                    tempCtx.putImageData(imageData, 0, 0);
+
+                    // Draw the result (person cutout) onto the main output canvas
+                    canvasCtx.drawImage(tempCanvas, 0, 0, canvasElement.width, canvasElement.height);
+
+                } else {
+                    // No person detected, so the canvas already shows the full video frame.
+                }
+
+            } catch (err) {
+                logEvent(`Error during segmentation: ${err.message}`, 'error');
+                // Don't stop the loop on a single frame error if possible
+            }
+
+            rafId = requestAnimationFrame(segmentFrame);
+        }
+
+
+        async function main() {
+            logEvent('Application started.');
+            try {
+                await loadModel();
+                await setupCamera();
+                logEvent('Starting segmentation loop...', 'success');
+                segmentFrame(); // Start the loop
+            } catch (error) {
+                logEvent(`Initialization failed: ${error.message}`, 'error');
+                statusElement.textContent = 'Initialization failed. See logs.';
+            }
+        }
+
+        // PWA Service Worker Registration
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('service-worker.js')
+                    .then(registration => {
+                        logEvent('ServiceWorker registration successful: ' + registration.scope, 'success');
+                    })
+                    .catch(error => {
+                        logEvent('ServiceWorker registration failed: ' + error, 'error');
+                    });
+            });
+        } else {
+            logEvent('Service workers are not supported in this browser.', 'info');
+        }
+
+        // Kick off the application
+        main();
+
+    </script>
+</body>
+</html>
