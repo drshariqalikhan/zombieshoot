@@ -74,7 +74,7 @@
         }
 
         #video {
-            display: none;
+            display: none; /* Video is processed but not shown directly */
         }
 
         #outputCanvas {
@@ -84,7 +84,7 @@
             width: 100%;
             height: 100%;
             border: 2px solid var(--canvas-border-color);
-            background-color: #000;
+            background-color: #000; /* Fallback background for the canvas */
             border-radius: 8px;
         }
 
@@ -166,12 +166,10 @@
         let segmenter;
         let rafId;
 
-        // 3. Adjust segmentationConfig for UNPKG
         const segmentationConfig = {
             runtime: 'mediapipe',
-            // Use the UNPKG path for MediaPipe assets
             solutionPath: 'https://unpkg.com/@mediapipe/selfie_segmentation@0.1',
-            modelType: 'general' // or 'landscape'
+            modelType: 'general'
         };
 
         function logEvent(message, type = 'info') {
@@ -207,7 +205,7 @@
                     videoElement.onloadedmetadata = () => {
                         videoElement.width = videoElement.videoWidth;
                         videoElement.height = videoElement.videoHeight;
-                        canvasElement.width = videoElement.videoWidth;
+                        canvasElement.width = videoElement.videoWidth; // Match canvas to video resolution initially
                         canvasElement.height = videoElement.videoHeight;
                         logEvent(`Camera resolution: ${videoElement.videoWidth}x${videoElement.videoHeight}`, 'success');
                         videoElement.play().catch(e => logEvent(`Video play failed: ${e.name} - ${e.message}`, 'error'));
@@ -238,13 +236,10 @@
                      logEvent(`CRITICAL ERROR: segmentationConfig.runtime is invalid or missing. Value: ${segmentationConfig ? segmentationConfig.runtime : 'N/A'}`, 'error');
                      throw new Error(`segmentationConfig.runtime is invalid or missing. Value: ${segmentationConfig ? segmentationConfig.runtime : 'N/A'}`);
                 }
-
-                // Ensure MediaPipe's SelfieSegmentation is available globally if using MediaPipe runtime
                 if (segmentationConfig.runtime === 'mediapipe' && typeof SelfieSegmentation === 'undefined') {
                     logEvent('MediaPipe SelfieSegmentation class not found globally. Ensure selfie_segmentation.js is loaded.', 'error');
                     throw new Error('SelfieSegmentation global not found.');
                 }
-
 
                 segmenter = await bodySegmentation.createSegmenter(
                     bodySegmentation.SupportedModels.MediaPipeSelfieSegmentation,
@@ -260,65 +255,56 @@
         }
 
         async function segmentFrame() {
-            if (!segmenter || videoElement.paused || videoElement.ended || videoElement.readyState < 4) {
+            if (!segmenter || videoElement.paused || videoElement.ended || videoElement.readyState < 4) { // HAVE_ENOUGH_DATA
                 if (rafId) cancelAnimationFrame(rafId);
                 rafId = requestAnimationFrame(segmentFrame);
                 return;
             }
+
             try {
                 const people = await segmenter.segmentPeople(videoElement, {
-                    flipHorizontal: false, // Keep as false for 'user' facingMode unless you want mirrored output
+                    flipHorizontal: false,
                     multiSegmentation: false,
                     segmentBodyParts: false,
                 });
 
+                canvasCtx.globalCompositeOperation = 'source-over'; // Reset before clearing
                 canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
                 if (people.length > 0) {
-                    const foregroundThreshold = 0.5;
                     const segmentation = people[0];
+                    const personMaskImageSource = await segmentation.mask.toCanvasImageSource();
 
-                    // Create a binary mask (black for background, white for foreground)
-                    const personMask = await bodySegmentation.toBinaryMask(
-                        segmentation,
-                        { r: 0, g: 0, b: 0, a: 255 }, // Background color (opaque black)
-                        { r: 255, g: 255, b: 255, a: 255 }, // Foreground color (opaque white)
-                        false, // drawContour
-                        foregroundThreshold
-                    );
-
-                    // 1. Draw the original video to a temporary canvas
                     const tempCanvas = document.createElement('canvas');
                     tempCanvas.width = videoElement.videoWidth;
                     tempCanvas.height = videoElement.videoHeight;
                     const tempCtx = tempCanvas.getContext('2d');
+
+                    // 1. Draw video onto temp canvas
                     tempCtx.drawImage(videoElement, 0, 0, tempCanvas.width, tempCanvas.height);
 
-                    // 2. Apply the mask:
-                    // 'destination-in' keeps the part of the destination (video)
-                    // where the source (mask) is opaque. Since our mask is white (foreground)
-                    // and black (background), this effectively cuts out the person.
+                    // 2. Apply mask using 'destination-in'
                     tempCtx.globalCompositeOperation = 'destination-in';
-                    tempCtx.drawImage(personMask, 0, 0, tempCanvas.width, tempCanvas.height);
-
-                    // 3. Draw the result (person cut out) onto the main canvas
-                    // Optional: Draw a background or the original video slightly dimmed on main canvas first
-                    canvasCtx.globalAlpha = 0.3; // Make original video a bit see-through for background
+                    tempCtx.drawImage(personMaskImageSource, 0, 0, tempCanvas.width, tempCanvas.height);
+                    
+                    // 3. Draw to main canvas
+                    // Optional: Draw background (e.g., dimmed video)
+                    canvasCtx.globalAlpha = 0.3;
                     canvasCtx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
-                    canvasCtx.globalAlpha = 1.0; // Reset alpha
+                    canvasCtx.globalAlpha = 1.0;
 
                     canvasCtx.drawImage(tempCanvas, 0, 0, canvasElement.width, canvasElement.height);
 
                 } else {
-                    // If no people detected, just draw the original video
+                    // No people detected, draw original video
                     canvasCtx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
                 }
             } catch (err) {
                 logEvent(`Error during segmentation: ${err.message}. Stack: ${err.stack}`, 'error');
             }
+
             rafId = requestAnimationFrame(segmentFrame);
         }
-
 
         async function main() {
             logEvent('Application started.');
