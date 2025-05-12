@@ -3,18 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>PWA Body Segmentation vDEBUG</title> {/* Added vDEBUG to title for cache busting check */}
+    <title>PWA Body Segmentation vDEBUG (unpkg)</title>
 
-    <!-- PWA Manifest -->
     <link rel="manifest" href="manifest.json">
-
-    <!-- iOS PWA Meta Tags & Standard PWA Meta Tag -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="BodySegment">
     <link rel="apple-touch-icon" href="icons/icon-192x192.png">
-    {/* <link rel="icon" href="favicon.ico" type="image/x-icon"> Optional */}
 
     <style>
         :root {
@@ -135,7 +131,7 @@
     </style>
 </head>
 <body>
-    <h1>PWA Body Segmentation vDEBUG</h1> {/* Changed title for cache busting check */}
+    <h1>PWA Body Segmentation vDEBUG (unpkg)</h1>
     <p id="status">Initializing...</p>
 
     <div class="container">
@@ -148,11 +144,16 @@
         <pre id="logOutput"></pre>
     </div>
 
-    <!-- TensorFlow.js and Body-Segmentation model -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@3.18.0/dist/tf-core.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter@3.18.0/dist/tf-converter.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@3.18.0/dist/tf-backend-webgl.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-segmentation@1.0.1/dist/body-segmentation.min.js"></script>
+    <!-- TensorFlow.js Core Libraries from UNPKG -->
+    <script src="https://unpkg.com/@tensorflow/tfjs-core@3.18.0/dist/tf-core.min.js"></script>
+    <script src="https://unpkg.com/@tensorflow/tfjs-converter@3.18.0/dist/tf-converter.min.js"></script>
+    <script src="https://unpkg.com/@tensorflow/tfjs-backend-webgl@3.18.0/dist/tf-backend-webgl.min.js"></script>
+
+    <!-- 1. MediaPipe Selfie Segmentation Solution from UNPKG (MUST be before body-segmentation) -->
+    <script src="https://unpkg.com/@mediapipe/selfie_segmentation@0.1/selfie_segmentation.js" crossorigin="anonymous"></script>
+
+    <!-- 2. TensorFlow.js Body Segmentation Model from UNPKG -->
+    <script src="https://unpkg.com/@tensorflow-models/body-segmentation@1.0.1/dist/body-segmentation.min.js"></script>
 
 
     <script>
@@ -165,10 +166,12 @@
         let segmenter;
         let rafId;
 
+        // 3. Adjust segmentationConfig for UNPKG
         const segmentationConfig = {
             runtime: 'mediapipe',
-            solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation',
-            modelType: 'general'
+            // Use the UNPKG path for MediaPipe assets
+            solutionPath: 'https://unpkg.com/@mediapipe/selfie_segmentation@0.1',
+            modelType: 'general' // or 'landscape'
         };
 
         function logEvent(message, type = 'info') {
@@ -178,9 +181,8 @@
             logEntry.textContent = `[${timestamp}] ${message}`;
             logOutputElement.appendChild(logEntry);
             logOutputElement.scrollTop = logOutputElement.scrollHeight;
-            // For console:
             if (type === 'error') console.error(`[${timestamp}] ${message}`);
-            else if (type === 'success') console.info(`[${timestamp}] ${message}`); // Use info for success
+            else if (type === 'success') console.info(`[${timestamp}] ${message}`);
             else console.log(`[${timestamp}] ${message}`);
         }
 
@@ -191,7 +193,6 @@
                 statusElement.textContent = 'Camera API not supported.';
                 throw new Error('getUserMedia() not supported.');
             }
-
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: {
@@ -202,7 +203,6 @@
                 });
                 videoElement.srcObject = stream;
                 logEvent('Camera stream acquired.');
-
                 return new Promise((resolve) => {
                     videoElement.onloadedmetadata = () => {
                         videoElement.width = videoElement.videoWidth;
@@ -230,20 +230,19 @@
             logEvent('Loading Body Segmentation model...');
             statusElement.textContent = 'Loading model...';
             try {
-                // ***** ADDED DEBUGGING LOGS HERE *****
-                if (typeof segmentationConfig === 'undefined') {
-                    logEvent('CRITICAL DEBUG: segmentationConfig IS UNDEFINED before createSegmenter!', 'error');
-                } else if (segmentationConfig === null) {
-                    logEvent('CRITICAL DEBUG: segmentationConfig IS NULL before createSegmenter!', 'error');
-                } else {
-                    logEvent(`DEBUG: segmentationConfig.runtime = ${segmentationConfig.runtime}`, 'info');
-                    logEvent(`DEBUG: segmentationConfig type = ${typeof segmentationConfig}`, 'info');
-                    logEvent(`DEBUG: segmentationConfig content = ${JSON.stringify(segmentationConfig)}`, 'info');
-                }
-                // Check if runtime property exists and is valid
+                logEvent(`DEBUG: segmentationConfig.runtime = ${segmentationConfig.runtime}`, 'info');
+                logEvent(`DEBUG: segmentationConfig type = ${typeof segmentationConfig}`, 'info');
+                logEvent(`DEBUG: segmentationConfig content = ${JSON.stringify(segmentationConfig)}`, 'info');
+
                 if (!segmentationConfig || !segmentationConfig.runtime || (segmentationConfig.runtime !== 'tfjs' && segmentationConfig.runtime !== 'mediapipe')) {
                      logEvent(`CRITICAL ERROR: segmentationConfig.runtime is invalid or missing. Value: ${segmentationConfig ? segmentationConfig.runtime : 'N/A'}`, 'error');
                      throw new Error(`segmentationConfig.runtime is invalid or missing. Value: ${segmentationConfig ? segmentationConfig.runtime : 'N/A'}`);
+                }
+
+                // Ensure MediaPipe's SelfieSegmentation is available globally if using MediaPipe runtime
+                if (segmentationConfig.runtime === 'mediapipe' && typeof SelfieSegmentation === 'undefined') {
+                    logEvent('MediaPipe SelfieSegmentation class not found globally. Ensure selfie_segmentation.js is loaded.', 'error');
+                    throw new Error('SelfieSegmentation global not found.');
                 }
 
 
@@ -256,58 +255,75 @@
             } catch (err) {
                 logEvent(`Error loading model: ${err.message}. Stack: ${err.stack}`, 'error');
                 statusElement.textContent = 'Failed to load model.';
-                throw err; // Rethrow to be caught by main's catch block
+                throw err;
             }
         }
 
         async function segmentFrame() {
-            if (!segmenter || videoElement.paused || videoElement.ended || videoElement.readyState < 4) { // HTMLMediaElement.HAVE_ENOUGH_DATA is 4
+            if (!segmenter || videoElement.paused || videoElement.ended || videoElement.readyState < 4) {
                 if (rafId) cancelAnimationFrame(rafId);
                 rafId = requestAnimationFrame(segmentFrame);
                 return;
             }
-
             try {
                 const people = await segmenter.segmentPeople(videoElement, {
-                    flipHorizontal: false,
+                    flipHorizontal: false, // Keep as false for 'user' facingMode unless you want mirrored output
                     multiSegmentation: false,
                     segmentBodyParts: false,
                 });
 
                 canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-                canvasCtx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
 
                 if (people.length > 0) {
-                    const personMask = people[0].mask;
+                    const foregroundThreshold = 0.5;
+                    const segmentation = people[0];
 
+                    // Create a binary mask (black for background, white for foreground)
+                    const personMask = await bodySegmentation.toBinaryMask(
+                        segmentation,
+                        { r: 0, g: 0, b: 0, a: 255 }, // Background color (opaque black)
+                        { r: 255, g: 255, b: 255, a: 255 }, // Foreground color (opaque white)
+                        false, // drawContour
+                        foregroundThreshold
+                    );
+
+                    // 1. Draw the original video to a temporary canvas
                     const tempCanvas = document.createElement('canvas');
-                    tempCanvas.width = personMask.width;
-                    tempCanvas.height = personMask.height;
+                    tempCanvas.width = videoElement.videoWidth;
+                    tempCanvas.height = videoElement.videoHeight;
                     const tempCtx = tempCanvas.getContext('2d');
+                    tempCtx.drawImage(videoElement, 0, 0, tempCanvas.width, tempCanvas.height);
 
-                    tempCtx.drawImage(videoElement, 0, 0, personMask.width, personMask.height);
-                    const imageData = tempCtx.getImageData(0, 0, personMask.width, personMask.height);
-                    const data = imageData.data;
-                    const maskData = personMask.data;
+                    // 2. Apply the mask:
+                    // 'destination-in' keeps the part of the destination (video)
+                    // where the source (mask) is opaque. Since our mask is white (foreground)
+                    // and black (background), this effectively cuts out the person.
+                    tempCtx.globalCompositeOperation = 'destination-in';
+                    tempCtx.drawImage(personMask, 0, 0, tempCanvas.width, tempCanvas.height);
 
-                    for (let i = 0; i < maskData.length; i++) {
-                        if (maskData[i] < 0.5) {
-                            data[i * 4 + 3] = 0;
-                        }
-                    }
-                    tempCtx.putImageData(imageData, 0, 0);
+                    // 3. Draw the result (person cut out) onto the main canvas
+                    // Optional: Draw a background or the original video slightly dimmed on main canvas first
+                    canvasCtx.globalAlpha = 0.3; // Make original video a bit see-through for background
+                    canvasCtx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
+                    canvasCtx.globalAlpha = 1.0; // Reset alpha
+
                     canvasCtx.drawImage(tempCanvas, 0, 0, canvasElement.width, canvasElement.height);
+
+                } else {
+                    // If no people detected, just draw the original video
+                    canvasCtx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
                 }
             } catch (err) {
-                logEvent(`Error during segmentation: ${err.message}`, 'error');
+                logEvent(`Error during segmentation: ${err.message}. Stack: ${err.stack}`, 'error');
             }
             rafId = requestAnimationFrame(segmentFrame);
         }
 
+
         async function main() {
             logEvent('Application started.');
             try {
-                await tf.setBackend('webgl'); // Explicitly set backend
+                await tf.setBackend('webgl');
                 logEvent(`TF.js backend set to: ${tf.getBackend()}`, 'success');
                 await loadModel();
                 await setupCamera();
@@ -315,7 +331,6 @@
                 statusElement.textContent = 'Starting camera...';
                 segmentFrame();
             } catch (error) {
-                // The error from loadModel or setupCamera will be caught here
                 logEvent(`Initialization failed: ${error.message}. Stack: ${error.stack}`, 'error');
                 statusElement.textContent = 'Initialization failed. See logs.';
             }
@@ -332,10 +347,8 @@
                                 installingWorker.onstatechange = () => {
                                     if (installingWorker.state === 'installed') {
                                         if (navigator.serviceWorker.controller) {
-                                            // New update available
                                             logEvent('New content is available; please refresh.', 'info');
                                         } else {
-                                            // Content is cached for offline use
                                             logEvent('Content is cached for offline use.', 'success');
                                         }
                                     }
