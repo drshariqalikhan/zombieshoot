@@ -1,22 +1,32 @@
 {
-  "name": "PWA Body Segmentation",
-  "short_name": "BodySegment",
-  "description": "Body Segmentation PWA using TensorFlow.js",
-  "start_url": ".",
-  "display": "standalone",
-  "background_color": "#1e1e1e",
-  "theme_color": "#5c8df6",
-  "orientation": "landscape", // <--- ADD OR UPDATE THIS
+  "name": "ZombieShoot Segmentation PWA",
+  "short_name": "ZombieShoot",
+  "description": "PWA for body segmentation with a zombie shooter theme, using TensorFlow.js and MediaPipe.",
   "icons": [
     {
       "src": "icons/icon-192x192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-384x384.png",  // Optional: good to have a mid-range size
+      "sizes": "384x384",
+      "type": "image/png",
+      "purpose": "any maskable"
     },
     {
       "src": "icons/icon-512x512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
-  ]
+  ],
+  "start_url": "/zombieshoot/",
+  "display": "standalone",
+  "background_color": "#1e1e1e",
+  "theme_color": "#5c8df6",
+  "scope": "/zombieshoot/",
+  "orientation": "landscape",
+  "id": "/zombieshoot/"
 }
